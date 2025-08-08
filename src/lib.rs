@@ -2,7 +2,7 @@
 #![allow(clippy::missing_safety_doc)]
 
 use raqote::{
-    BlendMode, Color, DrawOptions, DrawTarget, LineCap, LineJoin,
+    BlendMode, DrawOptions, DrawTarget, LineCap, LineJoin,
     Path, PathBuilder, Point, SolidSource, Source, StrokeStyle, Transform, Winding,
 };
 
