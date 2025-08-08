@@ -9,3 +9,4 @@ crate-type = ["cdylib", "staticlib"]
 [dependencies]
 raqote = "0.8"
 euclid = "0.22"
+kurbo = "0.11"

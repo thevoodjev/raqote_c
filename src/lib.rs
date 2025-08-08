@@ -348,6 +348,99 @@ pub unsafe extern "C" fn rq_path_destroy(path: *mut rq_path) {
     let _ = Box::from_raw(path);
 }
 
+#[no_mangle]
+pub unsafe extern "C" fn rq_rounded_rect(rect: rq_rect, rx: f32, ry: f32) -> *mut rq_path {
+    let (x, y, width, height) = (rect.x, rect.y, rect.width, rect.height);
+
+    let rx = rx.min(width / 2.0);
+    let ry = ry.min(height / 2.0);
+
+    let mut builder = PathBuilderTracker::new();
+
+    builder.move_to(x + rx, y);
+
+    builder.line_to(x + width - rx, y);
+    builder.arc_to(rx, ry, 0.0, false, true, x + width, y + ry);
+
+    builder.line_to(x + width, y + height - ry);
+    builder.arc_to(rx, ry, 0.0, false, true, x + width - rx, y + height);
+
+    builder.line_to(x + rx, y + height);
+    builder.arc_to(rx, ry, 0.0, false, true, x, y + height - ry);
+
+    builder.line_to(x, y + ry);
+    builder.arc_to(rx, ry, 0.0, false, true, x + rx, y);
+    
+    builder.close();
+
+    Box::into_raw(Box::new(rq_path(builder.finish())))
+}
+
+// Helper struct to track position and provide arc_to functionality
+struct PathBuilderTracker {
+    builder: PathBuilder,
+    current_pos: Option<Point>,
+}
+
+impl PathBuilderTracker {
+    fn new() -> Self {
+        Self {
+            builder: PathBuilder::new(),
+            current_pos: None,
+        }
+    }
+    
+    fn move_to(&mut self, x: f32, y: f32) {
+        self.builder.move_to(x, y);
+        self.current_pos = Some(Point::new(x, y));
+    }
+    
+    fn line_to(&mut self, x: f32, y: f32) {
+        self.builder.line_to(x, y);
+        self.current_pos = Some(Point::new(x, y));
+    }
+    
+    fn arc_to(&mut self, rx: f32, ry: f32, x_axis_rotation: f32, large_arc: bool, sweep: bool, x: f32, y: f32) {
+        if let Some(from) = self.current_pos {
+            let svg_arc = kurbo::SvgArc {
+                from: kurbo::Point::new(from.x as f64, from.y as f64),
+                to: kurbo::Point::new(x as f64, y as f64),
+                radii: kurbo::Vec2::new(rx as f64, ry as f64),
+                x_rotation: (x_axis_rotation as f64).to_radians(),
+                large_arc,
+                sweep,
+            };
+
+            match kurbo::Arc::from_svg_arc(&svg_arc) {
+                Some(arc) => {
+                    arc.to_cubic_beziers(0.1, |p1, p2, p| {
+                        self.builder.cubic_to(
+                            p1.x as f32,
+                            p1.y as f32,
+                            p2.x as f32,
+                            p2.y as f32,
+                            p.x as f32,
+                            p.y as f32,
+                        );
+                    });
+                }
+                None => {
+                    self.builder.line_to(x, y);
+                }
+            }
+            self.current_pos = Some(Point::new(x, y));
+        }
+    }
+    
+    fn close(&mut self) {
+        self.builder.close();
+    }
+    
+    fn finish(self) -> Path {
+        self.builder.finish()
+    }
+}
+
 // Draw target functions
 #[no_mangle]
 pub unsafe extern "C" fn rq_draw_target_create(width: i32, height: i32) -> *mut rq_draw_target {
