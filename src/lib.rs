@@ -73,11 +73,6 @@ pub struct rq_color {
     a: u8,
 }
 
-impl From<rq_color> for Color {
-    fn from(value: rq_color) -> Self {
-        Color::new(value.a, value.r, value.g, value.b)
-    }
-}
 
 impl From<rq_color> for SolidSource {
     fn from(value: rq_color) -> Self {
@@ -387,6 +382,7 @@ pub unsafe extern "C" fn rq_draw_target_fill_path(
     dt: *mut rq_draw_target,
     path: *const rq_path,
     color: rq_color,
+    fill_rule: rq_fill_rule,
     options: *const rq_draw_options,
 ) {
     let draw_options = if options.is_null() {
@@ -396,7 +392,9 @@ pub unsafe extern "C" fn rq_draw_target_fill_path(
     };
     
     let source = Source::Solid(color.into());
-    (*dt).0.fill(&(*path).0, &source, &draw_options);
+    let mut path_with_winding = (*path).0.clone();
+    path_with_winding.winding = fill_rule.into();
+    (*dt).0.fill(&path_with_winding, &source, &draw_options);
 }
 
 #[no_mangle]
@@ -469,17 +467,17 @@ pub unsafe extern "C" fn rq_draw_target_get_data(dt: *mut rq_draw_target) -> *mu
     let data = (*dt).0.get_data();
     let mut buffer = Vec::with_capacity(data.len() * 4);
     
-    // Convert from premultiplied ARGB to unpremultiplied ARGB
+    // Convert from raqote format to BGRA format expected by blend2d
     for pixel in data {
         let a = (pixel >> 24) & 0xff;
         let r = (pixel >> 16) & 0xff;
         let g = (pixel >> 8) & 0xff;
         let b = pixel & 0xff;
         
-        buffer.push(a as u8);
-        buffer.push(r as u8);
-        buffer.push(g as u8);
-        buffer.push(b as u8);
+        buffer.push(b as u8);  // B
+        buffer.push(g as u8);  // G  
+        buffer.push(r as u8);  // R
+        buffer.push(a as u8);  // A
     }
     
     Box::into_raw(Box::new(rq_argb(buffer)))
