@@ -286,23 +286,17 @@ pub unsafe extern "C" fn rq_path_builder_create() -> *mut rq_path_builder {
 
 #[no_mangle]
 pub unsafe extern "C" fn rq_path_builder_destroy(builder: *mut rq_path_builder) {
-    if !builder.is_null() {
-        let _ = Box::from_raw(builder);
-    }
+    let _ = Box::from_raw(builder);
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn rq_path_builder_move_to(builder: *mut rq_path_builder, x: f32, y: f32) {
-    if !builder.is_null() {
-        (*builder).0.move_to(x, y);
-    }
+    (*builder).0.move_to(x, y);
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn rq_path_builder_line_to(builder: *mut rq_path_builder, x: f32, y: f32) {
-    if !builder.is_null() {
-        (*builder).0.line_to(x, y);
-    }
+    (*builder).0.line_to(x, y);
 }
 
 #[no_mangle]
@@ -313,9 +307,7 @@ pub unsafe extern "C" fn rq_path_builder_quad_to(
     x: f32,
     y: f32,
 ) {
-    if !builder.is_null() {
-        (*builder).0.quad_to(cx, cy, x, y);
-    }
+    (*builder).0.quad_to(cx, cy, x, y);
 }
 
 #[no_mangle]
@@ -328,16 +320,12 @@ pub unsafe extern "C" fn rq_path_builder_cubic_to(
     x: f32,
     y: f32,
 ) {
-    if !builder.is_null() {
-        (*builder).0.cubic_to(cx1, cy1, cx2, cy2, x, y);
-    }
+    (*builder).0.cubic_to(cx1, cy1, cx2, cy2, x, y);
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn rq_path_builder_close(builder: *mut rq_path_builder) {
-    if !builder.is_null() {
-        (*builder).0.close();
-    }
+    (*builder).0.close();
 }
 
 #[no_mangle]
@@ -349,17 +337,11 @@ pub unsafe extern "C" fn rq_path_builder_arc(
     start_angle: f32,
     sweep_angle: f32,
 ) {
-    if !builder.is_null() {
-        (*builder).0.arc(x, y, radius, start_angle, sweep_angle);
-    }
+    (*builder).0.arc(x, y, radius, start_angle, sweep_angle);
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn rq_path_builder_finish(builder: *mut rq_path_builder) -> *mut rq_path {
-    if builder.is_null() {
-        return std::ptr::null_mut();
-    }
-    
     let builder = Box::from_raw(builder);
     let path = builder.0.finish();
     Box::into_raw(Box::new(rq_path(path)))
@@ -368,9 +350,7 @@ pub unsafe extern "C" fn rq_path_builder_finish(builder: *mut rq_path_builder) -
 // Path functions
 #[no_mangle]
 pub unsafe extern "C" fn rq_path_destroy(path: *mut rq_path) {
-    if !path.is_null() {
-        let _ = Box::from_raw(path);
-    }
+    let _ = Box::from_raw(path);
 }
 
 // Draw target functions
@@ -382,31 +362,23 @@ pub unsafe extern "C" fn rq_draw_target_create(width: i32, height: i32) -> *mut 
 
 #[no_mangle]
 pub unsafe extern "C" fn rq_draw_target_destroy(dt: *mut rq_draw_target) {
-    if !dt.is_null() {
-        let _ = Box::from_raw(dt);
-    }
+    let _ = Box::from_raw(dt);
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn rq_draw_target_clear(dt: *mut rq_draw_target, color: rq_color) {
-    if !dt.is_null() {
-        let solid_color: SolidSource = color.into();
-        (*dt).0.clear(solid_color);
-    }
+    let solid_color: SolidSource = color.into();
+    (*dt).0.clear(solid_color);
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn rq_draw_target_set_transform(dt: *mut rq_draw_target, transform: rq_transform) {
-    if !dt.is_null() {
-        (*dt).0.set_transform(&transform.into());
-    }
+    (*dt).0.set_transform(&transform.into());
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn rq_draw_target_get_transform(dt: *const rq_draw_target, out_transform: *mut rq_transform) {
-    if !dt.is_null() && !out_transform.is_null() {
-        *out_transform = (*(*dt).0.get_transform()).into();
-    }
+    *out_transform = (*(*dt).0.get_transform()).into();
 }
 
 // Drawing functions
@@ -417,16 +389,14 @@ pub unsafe extern "C" fn rq_draw_target_fill_path(
     color: rq_color,
     options: *const rq_draw_options,
 ) {
-    if !dt.is_null() && !path.is_null() {
-        let draw_options = if options.is_null() {
-            DrawOptions::new()
-        } else {
-            (&*options).into()
-        };
-        
-        let source = Source::Solid(color.into());
-        (*dt).0.fill(&(*path).0, &source, &draw_options);
-    }
+    let draw_options = if options.is_null() {
+        DrawOptions::new()
+    } else {
+        (&*options).into()
+    };
+    
+    let source = Source::Solid(color.into());
+    (*dt).0.fill(&(*path).0, &source, &draw_options);
 }
 
 #[no_mangle]
@@ -437,17 +407,15 @@ pub unsafe extern "C" fn rq_draw_target_stroke_path(
     stroke_style: *const rq_stroke_style,
     options: *const rq_draw_options,
 ) {
-    if !dt.is_null() && !path.is_null() && !stroke_style.is_null() {
-        let draw_options = if options.is_null() {
-            DrawOptions::new()
-        } else {
-            (&*options).into()
-        };
-        
-        let source = Source::Solid(color.into());
-        let style: StrokeStyle = (&*stroke_style).into();
-        (*dt).0.stroke(&(*path).0, &source, &style, &draw_options);
-    }
+    let draw_options = if options.is_null() {
+        DrawOptions::new()
+    } else {
+        (&*options).into()
+    };
+    
+    let source = Source::Solid(color.into());
+    let style: StrokeStyle = (&*stroke_style).into();
+    (*dt).0.stroke(&(*path).0, &source, &style, &draw_options);
 }
 
 #[no_mangle]
@@ -457,16 +425,14 @@ pub unsafe extern "C" fn rq_draw_target_fill_rect(
     color: rq_color,
     options: *const rq_draw_options,
 ) {
-    if !dt.is_null() {
-        let draw_options = if options.is_null() {
-            DrawOptions::new()
-        } else {
-            (&*options).into()
-        };
-        
-        let source = Source::Solid(color.into());
-        (*dt).0.fill_rect(rect.x, rect.y, rect.width, rect.height, &source, &draw_options);
-    }
+    let draw_options = if options.is_null() {
+        DrawOptions::new()
+    } else {
+        (&*options).into()
+    };
+    
+    let source = Source::Solid(color.into());
+    (*dt).0.fill_rect(rect.x, rect.y, rect.width, rect.height, &source, &draw_options);
 }
 
 #[no_mangle]
@@ -477,35 +443,29 @@ pub unsafe extern "C" fn rq_draw_target_stroke_rect(
     stroke_style: *const rq_stroke_style,
     options: *const rq_draw_options,
 ) {
-    if !dt.is_null() && !stroke_style.is_null() {
-        let draw_options = if options.is_null() {
-            DrawOptions::new()
-        } else {
-            (&*options).into()
-        };
-        
-        // Create a path for the rectangle
-        let mut builder = PathBuilder::new();
-        builder.move_to(rect.x, rect.y);
-        builder.line_to(rect.x + rect.width, rect.y);
-        builder.line_to(rect.x + rect.width, rect.y + rect.height);
-        builder.line_to(rect.x, rect.y + rect.height);
-        builder.close();
-        let path = builder.finish();
-        
-        let source = Source::Solid(color.into());
-        let style: StrokeStyle = (&*stroke_style).into();
-        (*dt).0.stroke(&path, &source, &style, &draw_options);
-    }
+    let draw_options = if options.is_null() {
+        DrawOptions::new()
+    } else {
+        (&*options).into()
+    };
+    
+    // Create a path for the rectangle
+    let mut builder = PathBuilder::new();
+    builder.move_to(rect.x, rect.y);
+    builder.line_to(rect.x + rect.width, rect.y);
+    builder.line_to(rect.x + rect.width, rect.y + rect.height);
+    builder.line_to(rect.x, rect.y + rect.height);
+    builder.close();
+    let path = builder.finish();
+    
+    let source = Source::Solid(color.into());
+    let style: StrokeStyle = (&*stroke_style).into();
+    (*dt).0.stroke(&path, &source, &style, &draw_options);
 }
 
 // Pixel data access
 #[no_mangle]
 pub unsafe extern "C" fn rq_draw_target_get_data(dt: *mut rq_draw_target) -> *mut rq_argb {
-    if dt.is_null() {
-        return std::ptr::null_mut();
-    }
-    
     let data = (*dt).0.get_data();
     let mut buffer = Vec::with_capacity(data.len() * 4);
     
@@ -527,31 +487,20 @@ pub unsafe extern "C" fn rq_draw_target_get_data(dt: *mut rq_draw_target) -> *mu
 
 #[no_mangle]
 pub unsafe extern "C" fn rq_argb_data(data: *const rq_argb) -> *const u8 {
-    if data.is_null() {
-        return std::ptr::null();
-    }
     (*data).0.as_ptr()
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn rq_argb_destroy(data: *mut rq_argb) {
-    if !data.is_null() {
-        let _ = Box::from_raw(data);
-    }
+    let _ = Box::from_raw(data);
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn rq_draw_target_width(dt: *const rq_draw_target) -> i32 {
-    if dt.is_null() {
-        return 0;
-    }
     (*dt).0.width()
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn rq_draw_target_height(dt: *const rq_draw_target) -> i32 {
-    if dt.is_null() {
-        return 0;
-    }
     (*dt).0.height()
 }
