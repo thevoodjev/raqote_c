@@ -2,8 +2,9 @@
 #![allow(clippy::missing_safety_doc)]
 
 use raqote::{
-    BlendMode, DrawOptions, DrawTarget, LineCap, LineJoin,
+    BlendMode, DrawOptions, DrawTarget, LineCap, LineJoin, ExtendMode, FilterMode,
     Path, PathBuilder, Point, SolidSource, Source, StrokeStyle, Transform, Winding,
+    Color, Gradient, GradientStop, Image, Spread,
 };
 
 #[repr(C)]
@@ -73,10 +74,32 @@ pub struct rq_color {
     a: u8,
 }
 
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct rq_gradient_stop {
+    position: f32,
+    color: rq_color,
+}
+
 
 impl From<rq_color> for SolidSource {
     fn from(value: rq_color) -> Self {
         SolidSource::from_unpremultiplied_argb(value.a, value.r, value.g, value.b)
+    }
+}
+
+impl From<rq_color> for Color {
+    fn from(value: rq_color) -> Self {
+        Color::new(value.a, value.r, value.g, value.b)
+    }
+}
+
+impl From<rq_gradient_stop> for GradientStop {
+    fn from(value: rq_gradient_stop) -> Self {
+        GradientStop {
+            position: value.position,
+            color: value.color.into(),
+        }
     }
 }
 
@@ -87,11 +110,61 @@ pub enum rq_fill_rule {
     EvenOdd,
 }
 
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub enum rq_spread_mode {
+    Pad,
+    Reflect,
+    Repeat,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub enum rq_extend_mode {
+    Pad,
+    Repeat,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub enum rq_filter_mode {
+    Nearest,
+    Bilinear,
+}
+
 impl From<rq_fill_rule> for Winding {
     fn from(value: rq_fill_rule) -> Self {
         match value {
             rq_fill_rule::Winding => Winding::NonZero,
             rq_fill_rule::EvenOdd => Winding::EvenOdd,
+        }
+    }
+}
+
+impl From<rq_spread_mode> for Spread {
+    fn from(value: rq_spread_mode) -> Self {
+        match value {
+            rq_spread_mode::Pad => Spread::Pad,
+            rq_spread_mode::Reflect => Spread::Reflect,
+            rq_spread_mode::Repeat => Spread::Repeat,
+        }
+    }
+}
+
+impl From<rq_extend_mode> for ExtendMode {
+    fn from(value: rq_extend_mode) -> Self {
+        match value {
+            rq_extend_mode::Pad => ExtendMode::Pad,
+            rq_extend_mode::Repeat => ExtendMode::Repeat,
+        }
+    }
+}
+
+impl From<rq_filter_mode> for FilterMode {
+    fn from(value: rq_filter_mode) -> Self {
+        match value {
+            rq_filter_mode::Nearest => FilterMode::Nearest,
+            rq_filter_mode::Bilinear => FilterMode::Bilinear,
         }
     }
 }
@@ -244,6 +317,56 @@ pub struct rq_path_builder(PathBuilder);
 pub struct rq_path(Path);
 pub struct rq_draw_target(DrawTarget);
 pub struct rq_argb(Vec<u8>);
+pub struct rq_linear_gradient {
+    x0: f32,
+    y0: f32,
+    x1: f32,
+    y1: f32,
+    stops: Vec<GradientStop>,
+    spread: Spread,
+    transform: rq_transform,
+}
+pub struct rq_radial_gradient {
+    x0: f32,
+    y0: f32,
+    r0: f32,
+    x1: f32,
+    y1: f32,
+    r1: f32,
+    stops: Vec<GradientStop>,
+    spread: Spread,
+    transform: rq_transform,
+}
+pub struct rq_sweep_gradient {
+    center_x: f32,
+    center_y: f32,
+    start_angle: f32,
+    end_angle: f32,
+    stops: Vec<GradientStop>,
+    spread: Spread,
+    transform: rq_transform,
+}
+pub struct rq_image {
+    width: i32,
+    height: i32,
+    data: Vec<u32>,
+}
+pub struct rq_pattern {
+    image: rq_image,
+    extend_mode: ExtendMode,
+    filter_mode: FilterMode,
+    transform: rq_transform,
+}
+
+#[repr(C)]
+pub enum rq_paint {
+    Solid(rq_color),
+    LinearGradient(*mut rq_linear_gradient),
+    RadialGradient(*mut rq_radial_gradient),
+    SweepGradient(*mut rq_sweep_gradient),
+    Pattern(*mut rq_pattern),
+}
+
 
 // Transform functions
 #[no_mangle]
@@ -474,7 +597,7 @@ pub unsafe extern "C" fn rq_draw_target_get_transform(dt: *const rq_draw_target,
 pub unsafe extern "C" fn rq_draw_target_fill_path(
     dt: *mut rq_draw_target,
     path: *const rq_path,
-    color: rq_color,
+    paint: rq_paint,
     fill_rule: rq_fill_rule,
     options: *const rq_draw_options,
 ) {
@@ -484,17 +607,71 @@ pub unsafe extern "C" fn rq_draw_target_fill_path(
         (&*options).into()
     };
     
-    let source = Source::Solid(color.into());
     let mut path_with_winding = (*path).0.clone();
     path_with_winding.winding = fill_rule.into();
-    (*dt).0.fill(&path_with_winding, &source, &draw_options);
+    
+    match paint {
+        rq_paint::Solid(color) => {
+            let source = Source::Solid(color.into());
+            (*dt).0.fill(&path_with_winding, &source, &draw_options);
+        },
+        rq_paint::LinearGradient(gradient) => {
+            let g = &*gradient;
+            let start = Point::new(g.x0, g.y0);
+            let end = Point::new(g.x1, g.y1);
+            let gradient_data = Gradient {
+                stops: g.stops.clone(),
+            };
+            let source = Source::new_linear_gradient(gradient_data, start, end, g.spread);
+            (*dt).0.fill(&path_with_winding, &source, &draw_options);
+        },
+        rq_paint::RadialGradient(gradient) => {
+            let g = &*gradient;
+            let gradient_data = Gradient {
+                stops: g.stops.clone(),
+            };
+            let source = Source::new_two_circle_radial_gradient(
+                gradient_data,
+                Point::new(g.x0, g.y0),
+                g.r0,
+                Point::new(g.x1, g.y1),
+                g.r1,
+                g.spread,
+            );
+            (*dt).0.fill(&path_with_winding, &source, &draw_options);
+        },
+        rq_paint::SweepGradient(gradient) => {
+            let g = &*gradient;
+            let gradient_data = Gradient {
+                stops: g.stops.clone(),
+            };
+            let source = Source::new_sweep_gradient(
+                gradient_data,
+                Point::new(g.center_x, g.center_y),
+                g.start_angle,
+                g.end_angle,
+                g.spread,
+            );
+            (*dt).0.fill(&path_with_winding, &source, &draw_options);
+        },
+        rq_paint::Pattern(pattern) => {
+            let p = &*pattern;
+            let raqote_image = Image {
+                width: p.image.width,
+                height: p.image.height,
+                data: &p.image.data,
+            };
+            let source = Source::Image(raqote_image, p.extend_mode, p.filter_mode, p.transform.into());
+            (*dt).0.fill(&path_with_winding, &source, &draw_options);
+        },
+    }
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn rq_draw_target_stroke_path(
     dt: *mut rq_draw_target,
     path: *const rq_path,
-    color: rq_color,
+    paint: rq_paint,
     stroke_style: *const rq_stroke_style,
     options: *const rq_draw_options,
 ) {
@@ -504,16 +681,70 @@ pub unsafe extern "C" fn rq_draw_target_stroke_path(
         (&*options).into()
     };
     
-    let source = Source::Solid(color.into());
     let style: StrokeStyle = (&*stroke_style).into();
-    (*dt).0.stroke(&(*path).0, &source, &style, &draw_options);
+    
+    match paint {
+        rq_paint::Solid(color) => {
+            let source = Source::Solid(color.into());
+            (*dt).0.stroke(&(*path).0, &source, &style, &draw_options);
+        },
+        rq_paint::LinearGradient(gradient) => {
+            let g = &*gradient;
+            let start = Point::new(g.x0, g.y0);
+            let end = Point::new(g.x1, g.y1);
+            let gradient_data = Gradient {
+                stops: g.stops.clone(),
+            };
+            let source = Source::new_linear_gradient(gradient_data, start, end, g.spread);
+            (*dt).0.stroke(&(*path).0, &source, &style, &draw_options);
+        },
+        rq_paint::RadialGradient(gradient) => {
+            let g = &*gradient;
+            let gradient_data = Gradient {
+                stops: g.stops.clone(),
+            };
+            let source = Source::new_two_circle_radial_gradient(
+                gradient_data,
+                Point::new(g.x0, g.y0),
+                g.r0,
+                Point::new(g.x1, g.y1),
+                g.r1,
+                g.spread,
+            );
+            (*dt).0.stroke(&(*path).0, &source, &style, &draw_options);
+        },
+        rq_paint::SweepGradient(gradient) => {
+            let g = &*gradient;
+            let gradient_data = Gradient {
+                stops: g.stops.clone(),
+            };
+            let source = Source::new_sweep_gradient(
+                gradient_data,
+                Point::new(g.center_x, g.center_y),
+                g.start_angle,
+                g.end_angle,
+                g.spread,
+            );
+            (*dt).0.stroke(&(*path).0, &source, &style, &draw_options);
+        },
+        rq_paint::Pattern(pattern) => {
+            let p = &*pattern;
+            let raqote_image = Image {
+                width: p.image.width,
+                height: p.image.height,
+                data: &p.image.data,
+            };
+            let source = Source::Image(raqote_image, p.extend_mode, p.filter_mode, p.transform.into());
+            (*dt).0.stroke(&(*path).0, &source, &style, &draw_options);
+        },
+    }
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn rq_draw_target_fill_rect(
     dt: *mut rq_draw_target,
     rect: rq_rect,
-    color: rq_color,
+    paint: rq_paint,
     options: *const rq_draw_options,
 ) {
     let draw_options = if options.is_null() {
@@ -522,15 +753,68 @@ pub unsafe extern "C" fn rq_draw_target_fill_rect(
         (&*options).into()
     };
     
-    let source = Source::Solid(color.into());
-    (*dt).0.fill_rect(rect.x, rect.y, rect.width, rect.height, &source, &draw_options);
+    match paint {
+        rq_paint::Solid(color) => {
+            let source = Source::Solid(color.into());
+            (*dt).0.fill_rect(rect.x, rect.y, rect.width, rect.height, &source, &draw_options);
+        },
+        rq_paint::LinearGradient(gradient) => {
+            let g = &*gradient;
+            let start = Point::new(g.x0, g.y0);
+            let end = Point::new(g.x1, g.y1);
+            let gradient_data = Gradient {
+                stops: g.stops.clone(),
+            };
+            let source = Source::new_linear_gradient(gradient_data, start, end, g.spread);
+            (*dt).0.fill_rect(rect.x, rect.y, rect.width, rect.height, &source, &draw_options);
+        },
+        rq_paint::RadialGradient(gradient) => {
+            let g = &*gradient;
+            let gradient_data = Gradient {
+                stops: g.stops.clone(),
+            };
+            let source = Source::new_two_circle_radial_gradient(
+                gradient_data,
+                Point::new(g.x0, g.y0),
+                g.r0,
+                Point::new(g.x1, g.y1),
+                g.r1,
+                g.spread,
+            );
+            (*dt).0.fill_rect(rect.x, rect.y, rect.width, rect.height, &source, &draw_options);
+        },
+        rq_paint::SweepGradient(gradient) => {
+            let g = &*gradient;
+            let gradient_data = Gradient {
+                stops: g.stops.clone(),
+            };
+            let source = Source::new_sweep_gradient(
+                gradient_data,
+                Point::new(g.center_x, g.center_y),
+                g.start_angle,
+                g.end_angle,
+                g.spread,
+            );
+            (*dt).0.fill_rect(rect.x, rect.y, rect.width, rect.height, &source, &draw_options);
+        },
+        rq_paint::Pattern(pattern) => {
+            let p = &*pattern;
+            let raqote_image = Image {
+                width: p.image.width,
+                height: p.image.height,
+                data: &p.image.data,
+            };
+            let source = Source::Image(raqote_image, p.extend_mode, p.filter_mode, p.transform.into());
+            (*dt).0.fill_rect(rect.x, rect.y, rect.width, rect.height, &source, &draw_options);
+        },
+    }
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn rq_draw_target_stroke_rect(
     dt: *mut rq_draw_target,
     rect: rq_rect,
-    color: rq_color,
+    paint: rq_paint,
     stroke_style: *const rq_stroke_style,
     options: *const rq_draw_options,
 ) {
@@ -549,9 +833,63 @@ pub unsafe extern "C" fn rq_draw_target_stroke_rect(
     builder.close();
     let path = builder.finish();
     
-    let source = Source::Solid(color.into());
     let style: StrokeStyle = (&*stroke_style).into();
-    (*dt).0.stroke(&path, &source, &style, &draw_options);
+    
+    match paint {
+        rq_paint::Solid(color) => {
+            let source = Source::Solid(color.into());
+            (*dt).0.stroke(&path, &source, &style, &draw_options);
+        },
+        rq_paint::LinearGradient(gradient) => {
+            let g = &*gradient;
+            let start = Point::new(g.x0, g.y0);
+            let end = Point::new(g.x1, g.y1);
+            let gradient_data = Gradient {
+                stops: g.stops.clone(),
+            };
+            let source = Source::new_linear_gradient(gradient_data, start, end, g.spread);
+            (*dt).0.stroke(&path, &source, &style, &draw_options);
+        },
+        rq_paint::RadialGradient(gradient) => {
+            let g = &*gradient;
+            let gradient_data = Gradient {
+                stops: g.stops.clone(),
+            };
+            let source = Source::new_two_circle_radial_gradient(
+                gradient_data,
+                Point::new(g.x0, g.y0),
+                g.r0,
+                Point::new(g.x1, g.y1),
+                g.r1,
+                g.spread,
+            );
+            (*dt).0.stroke(&path, &source, &style, &draw_options);
+        },
+        rq_paint::SweepGradient(gradient) => {
+            let g = &*gradient;
+            let gradient_data = Gradient {
+                stops: g.stops.clone(),
+            };
+            let source = Source::new_sweep_gradient(
+                gradient_data,
+                Point::new(g.center_x, g.center_y),
+                g.start_angle,
+                g.end_angle,
+                g.spread,
+            );
+            (*dt).0.stroke(&path, &source, &style, &draw_options);
+        },
+        rq_paint::Pattern(pattern) => {
+            let p = &*pattern;
+            let raqote_image = Image {
+                width: p.image.width,
+                height: p.image.height,
+                data: &p.image.data,
+            };
+            let source = Source::Image(raqote_image, p.extend_mode, p.filter_mode, p.transform.into());
+            (*dt).0.stroke(&path, &source, &style, &draw_options);
+        },
+    }
 }
 
 // Pixel data access
@@ -594,4 +932,168 @@ pub unsafe extern "C" fn rq_draw_target_width(dt: *const rq_draw_target) -> i32 
 #[no_mangle]
 pub unsafe extern "C" fn rq_draw_target_height(dt: *const rq_draw_target) -> i32 {
     (*dt).0.height()
+}
+
+// Gradient functions
+#[no_mangle]
+pub unsafe extern "C" fn rq_linear_gradient_create(
+    x0: f32,
+    y0: f32,
+    x1: f32,
+    y1: f32,
+    spread: rq_spread_mode,
+    transform: rq_transform,
+) -> *mut rq_linear_gradient {
+    Box::into_raw(Box::new(rq_linear_gradient {
+        x0,
+        y0,
+        x1,
+        y1,
+        stops: Vec::new(),
+        spread: spread.into(),
+        transform,
+    }))
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rq_radial_gradient_create(
+    x0: f32,
+    y0: f32,
+    r0: f32,
+    x1: f32,
+    y1: f32,
+    r1: f32,
+    spread: rq_spread_mode,
+    transform: rq_transform,
+) -> *mut rq_radial_gradient {
+    Box::into_raw(Box::new(rq_radial_gradient {
+        x0,
+        y0,
+        r0,
+        x1,
+        y1,
+        r1,
+        stops: Vec::new(),
+        spread: spread.into(),
+        transform,
+    }))
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rq_linear_gradient_add_stop(
+    gradient: *mut rq_linear_gradient,
+    stop: rq_gradient_stop,
+) {
+    (*gradient).stops.push(stop.into());
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rq_radial_gradient_add_stop(
+    gradient: *mut rq_radial_gradient,
+    stop: rq_gradient_stop,
+) {
+    (*gradient).stops.push(stop.into());
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rq_linear_gradient_destroy(gradient: *mut rq_linear_gradient) {
+    let _ = Box::from_raw(gradient);
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rq_radial_gradient_destroy(gradient: *mut rq_radial_gradient) {
+    let _ = Box::from_raw(gradient);
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rq_sweep_gradient_create(
+    center_x: f32,
+    center_y: f32,
+    start_angle: f32,
+    end_angle: f32,
+    spread: rq_spread_mode,
+    transform: rq_transform,
+) -> *mut rq_sweep_gradient {
+    Box::into_raw(Box::new(rq_sweep_gradient {
+        center_x,
+        center_y,
+        start_angle,
+        end_angle,
+        stops: Vec::new(),
+        spread: spread.into(),
+        transform,
+    }))
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rq_sweep_gradient_add_stop(
+    gradient: *mut rq_sweep_gradient,
+    stop: rq_gradient_stop,
+) {
+    (*gradient).stops.push(stop.into());
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rq_sweep_gradient_destroy(gradient: *mut rq_sweep_gradient) {
+    let _ = Box::from_raw(gradient);
+}
+
+// Pattern functions  
+#[no_mangle]
+pub unsafe extern "C" fn rq_image_create(width: i32, height: i32, data: *const u32) -> *mut rq_image {
+    let size = (width * height) as usize;
+    let data_slice = std::slice::from_raw_parts(data, size);
+    
+    Box::into_raw(Box::new(rq_image {
+        width,
+        height,
+        data: data_slice.to_vec(),
+    }))
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rq_image_destroy(image: *mut rq_image) {
+    let _ = Box::from_raw(image);
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rq_pattern_create(
+    image: *mut rq_image,
+    extend_mode: rq_extend_mode,
+    filter_mode: rq_filter_mode,
+    transform: rq_transform,
+) -> *mut rq_pattern {
+    Box::into_raw(Box::new(rq_pattern {
+        image: std::ptr::read(image),
+        extend_mode: extend_mode.into(),
+        filter_mode: filter_mode.into(),
+        transform,
+    }))
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rq_pattern_destroy(pattern: *mut rq_pattern) {
+    let _ = Box::from_raw(pattern);
+}
+
+// Paint helper functions
+#[no_mangle]
+pub unsafe extern "C" fn rq_paint_destroy(paint: rq_paint) {
+    match paint {
+        rq_paint::Solid(_) => {
+            // Nothing to clean up for solid colors
+        },
+        rq_paint::LinearGradient(_) => {
+            // Gradients are managed externally, don't destroy here
+        },
+        rq_paint::RadialGradient(_) => {
+            // Gradients are managed externally, don't destroy here
+        },
+        rq_paint::SweepGradient(_) => {
+            // Gradients are managed externally, don't destroy here
+        },
+        rq_paint::Pattern(_) => {
+            // Patterns are managed externally, don't destroy here
+        },
+    }
 }
