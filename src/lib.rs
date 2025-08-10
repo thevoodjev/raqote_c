@@ -324,7 +324,6 @@ pub struct rq_linear_gradient {
     y1: f32,
     stops: Vec<GradientStop>,
     spread: Spread,
-    transform: rq_transform,
 }
 pub struct rq_radial_gradient {
     x0: f32,
@@ -335,7 +334,6 @@ pub struct rq_radial_gradient {
     r1: f32,
     stops: Vec<GradientStop>,
     spread: Spread,
-    transform: rq_transform,
 }
 pub struct rq_sweep_gradient {
     center_x: f32,
@@ -344,7 +342,6 @@ pub struct rq_sweep_gradient {
     end_angle: f32,
     stops: Vec<GradientStop>,
     spread: Spread,
-    transform: rq_transform,
 }
 pub struct rq_image {
     width: i32,
@@ -942,7 +939,6 @@ pub unsafe extern "C" fn rq_linear_gradient_create(
     x1: f32,
     y1: f32,
     spread: rq_spread_mode,
-    transform: rq_transform,
 ) -> *mut rq_linear_gradient {
     Box::into_raw(Box::new(rq_linear_gradient {
         x0,
@@ -951,7 +947,6 @@ pub unsafe extern "C" fn rq_linear_gradient_create(
         y1,
         stops: Vec::new(),
         spread: spread.into(),
-        transform,
     }))
 }
 
@@ -964,7 +959,6 @@ pub unsafe extern "C" fn rq_radial_gradient_create(
     y1: f32,
     r1: f32,
     spread: rq_spread_mode,
-    transform: rq_transform,
 ) -> *mut rq_radial_gradient {
     Box::into_raw(Box::new(rq_radial_gradient {
         x0,
@@ -975,7 +969,6 @@ pub unsafe extern "C" fn rq_radial_gradient_create(
         r1,
         stops: Vec::new(),
         spread: spread.into(),
-        transform,
     }))
 }
 
@@ -1012,7 +1005,6 @@ pub unsafe extern "C" fn rq_sweep_gradient_create(
     start_angle: f32,
     end_angle: f32,
     spread: rq_spread_mode,
-    transform: rq_transform,
 ) -> *mut rq_sweep_gradient {
     Box::into_raw(Box::new(rq_sweep_gradient {
         center_x,
@@ -1021,7 +1013,6 @@ pub unsafe extern "C" fn rq_sweep_gradient_create(
         end_angle,
         stops: Vec::new(),
         spread: spread.into(),
-        transform,
     }))
 }
 
